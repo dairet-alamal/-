@@ -20,7 +20,7 @@ loginBtn.addEventListener("click", () => {
 
 /* ---------------- Firebase Setup ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyANAmBZ2ySOP6hcVMZ2zfu8PsnXnHqZbOA",
@@ -92,6 +92,7 @@ function openDepartment(dept) {
   panel.classList.remove("hidden");
   formStatus.textContent = "";
   addMemberForm.reset();
+  editingMemberId = null;
   startMembersListener(dept.id);
 }
 
@@ -104,6 +105,8 @@ function closePanel() {
 closePanelBtn.addEventListener("click", closePanel);
 
 /* ---------------- Members Real-time ---------------- */
+let editingMemberId = null;
+
 function startMembersListener(deptId) {
   if (unsubscribeMembers) unsubscribeMembers();
   const q = query(collection(db, "departments", deptId, "members"), orderBy("createdAt", "desc"));
@@ -114,8 +117,8 @@ function startMembersListener(deptId) {
       return;
     }
     membersEmpty.classList.add("hidden");
-    snap.forEach((doc) => {
-      const m = doc.data();
+    snap.forEach((docSnap) => {
+      const m = docSnap.data();
       const li = document.createElement("li");
       li.className = "member";
       li.innerHTML = `
@@ -125,13 +128,23 @@ function startMembersListener(deptId) {
           <span>📞 ${m.phone}</span>
           <span>📍 ${m.location}</span>
         </div>
+        <div class="member-actions" style="display:flex; gap:8px; margin-top:6px;">
+          <button class="btn btn-secondary btn-edit">تعديل</button>
+          <button class="btn btn-danger btn-delete">حذف</button>
+        </div>
       `;
+      const editBtn = li.querySelector(".btn-edit");
+      const deleteBtn = li.querySelector(".btn-delete");
+
+      editBtn.addEventListener("click", () => editMember(docSnap.id, m));
+      deleteBtn.addEventListener("click", () => deleteMember(docSnap.id));
+
       membersList.appendChild(li);
     });
   });
 }
 
-/* ---------------- Add Member ---------------- */
+/* ---------------- Add / Edit Member ---------------- */
 addMemberForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!currentDept) return;
@@ -152,13 +165,31 @@ addMemberForm.addEventListener("submit", async (e) => {
 
   try {
     formStatus.textContent = "جاري الحفظ...";
-    await addDoc(collection(db, "departments", currentDept.id, "members"), payload);
-    formStatus.textContent = "تمت الإضافة ✅";
+    if (editingMemberId) {
+      await updateDoc(doc(db, "departments", currentDept.id, "members", editingMemberId), payload);
+      formStatus.textContent = "تم التعديل ✅";
+      editingMemberId = null;
+    } else {
+      await addDoc(collection(db, "departments", currentDept.id, "members"), payload);
+      formStatus.textContent = "تمت الإضافة ✅";
+    }
     addMemberForm.reset();
   } catch {
     formStatus.textContent = "خطأ أثناء الحفظ";
   }
 });
+
+/* ---------------- Delete Member ---------------- */
+async function deleteMember(docId) {
+  if (!currentDept) return;
+  if (confirm("هل أنت متأكد من حذف هذا العضو؟ ❌")) {
+    try {
+      await deleteDoc(doc(db, "departments", currentDept.id, "members", docId));
+    } catch {
+      alert("حدث خطأ أثناء الحذف");
+    }
+  }
+}
 
 /* ---------------- Init ---------------- */
 renderDepartments();
